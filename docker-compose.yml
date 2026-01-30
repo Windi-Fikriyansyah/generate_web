@@ -65,11 +65,18 @@ services:
     networks:
       - webnet
 
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/letsencrypt
+
   nginx:
     image: nginx:alpine
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./backend/storage:/app/storage:ro
