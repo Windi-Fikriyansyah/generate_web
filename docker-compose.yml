@@ -11,7 +11,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5433:5433"
+      - "5432:5432"
 
   redis:
     image: redis:7-alpine
@@ -23,7 +23,7 @@ services:
     build: ./backend
     restart: always
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD:-AppUser@123}@db:5433/${POSTGRES_DB:-db_app}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD:-AppUser@123}@db:5432/${POSTGRES_DB:-db_app}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - FONT_PATH=fonts/Roboto-Bold.ttf
@@ -39,7 +39,7 @@ services:
     restart: always
     command: celery -A celery_app worker --loglevel=info
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD:-AppUser@123}@db:5433/${POSTGRES_DB:-db_app}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD:-AppUser@123}@db:5432/${POSTGRES_DB:-db_app}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - FONT_PATH=fonts/Roboto-Bold.ttf
