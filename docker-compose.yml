@@ -5,13 +5,13 @@ services:
     image: postgres:15-alpine
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin123}
-      POSTGRES_DB: ${POSTGRES_DB:-db_generate}
+      POSTGRES_USER: ${POSTGRES_USER:-app_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-AppUser@123}
+      POSTGRES_DB: ${POSTGRES_DB:-db_app}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5433:5433"
 
   redis:
     image: redis:7-alpine
@@ -23,7 +23,7 @@ services:
     build: ./backend
     restart: always
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-admin123}@db:5432/${POSTGRES_DB:-db_generate}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD:-AppUser@123}@db:5433/${POSTGRES_DB:-db_app}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - FONT_PATH=fonts/Roboto-Bold.ttf
@@ -39,7 +39,7 @@ services:
     restart: always
     command: celery -A celery_app worker --loglevel=info
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-admin123}@db:5432/${POSTGRES_DB:-db_generate}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD:-AppUser@123}@db:5433/${POSTGRES_DB:-db_app}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - FONT_PATH=fonts/Roboto-Bold.ttf
@@ -53,7 +53,7 @@ services:
     build: ./frontend
     restart: always
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NEXT_PUBLIC_API_URL=https://tupianpipei.online/api
     depends_on:
       - backend
 
