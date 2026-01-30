@@ -1,0 +1,36 @@
+# Common
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Node (Frontend)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# Python (Backend)
+backend/venv/
+backend/.venv/
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+backend/.pytest_cache/
+backend/storage/processed/
+backend/storage/temp/
+backend/storage/uploads/
+backend/storage/db/
+backend/error.log
+backend/error_final.log
+backend/startup.log
+backend/all_texts.txt
+backend/all_gd_texts.txt
+
+# Docker
+.docker/
