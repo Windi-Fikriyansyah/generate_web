@@ -178,11 +178,11 @@ async def get_products(
     if sort_by and hasattr(Product, sort_by):
         column = getattr(Product, sort_by)
         if sort_order == "asc":
-            query = query.order_by(column.asc())
+            query = query.order_by(column.asc(), Product.id.desc())
         else:
-            query = query.order_by(column.desc())
+            query = query.order_by(column.desc(), Product.id.desc())
     else:
-        query = query.order_by(Product.created_at.desc())
+        query = query.order_by(Product.created_at.desc(), Product.id.desc())
 
     products = query.offset((page - 1) * limit).limit(limit).all()
     
