@@ -34,6 +34,8 @@ export default function ComparePage() {
     const [search, setSearch] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [sortBy, setSortBy] = useState("created_at");
+    const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
     const [syncBy, setSyncBy] = useState<"nomor_id" | "sku_platform">("nomor_id");
 
     // Upload state
@@ -52,7 +54,7 @@ export default function ComparePage() {
         setIsLoading(true);
         try {
             const res = await axios.get(`${API_BASE}/products`, {
-                params: { page, limit, search }
+                params: { page, limit, search, sort_by: sortBy, sort_order: sortOrder }
             });
             setProducts(res.data.data);
             setTotal(res.data.total);
@@ -61,7 +63,7 @@ export default function ComparePage() {
         } finally {
             setIsLoading(false);
         }
-    }, [page, limit, search]);
+    }, [page, limit, search, sortBy, sortOrder]);
 
     // Load preference
     useEffect(() => {
@@ -205,7 +207,7 @@ export default function ComparePage() {
         setUploadingId(productId);
         setIsUploadModalOpen(true);
 
-        const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+        const CHUNK_SIZE = 5 * 1024 * 1024;
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
         const fileUuid = Math.random().toString(36).substring(7);
 
@@ -267,35 +269,54 @@ export default function ComparePage() {
         }
     };
 
+    // Sorting Handler
+    const handleSort = (column: string) => {
+        if (sortBy === column) {
+            setSortOrder(prev => prev === "asc" ? "desc" : "asc");
+        } else {
+            setSortBy(column);
+            setSortOrder("asc"); // Default to asc for new column
+        }
+    };
+
+    const SortIcon = ({ column }: { column: string }) => {
+        if (sortBy !== column) return <span className="text-slate-300 ml-1">⇅</span>;
+        return (
+            <span className="text-purple-600 ml-1">
+                {sortOrder === "asc" ? "↑" : "↓"}
+            </span>
+        );
+    };
+
     return (
-        <div className="max-w-[1600px] mx-auto space-y-8 animate-in fade-in duration-500">
+        <div className="h-[calc(100vh-2rem)] flex flex-col space-y-4 animate-in fade-in duration-500 overflow-hidden">
             {/* Header section with Stats or Breadcrumbs */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div className="flex-none flex flex-col lg:flex-row lg:items-center justify-between gap-4 px-1">
                 <div className="space-y-1">
                     {/* Titles removed to focus on buttons */}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4">
                     {/* Sync Mode Toggle */}
-                    <div className="flex items-center bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
+                    <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
                         <button
                             onClick={() => setSyncBy("nomor_id")}
-                            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${syncBy === "nomor_id" ? "bg-white text-purple-600 shadow-lg shadow-purple-600/10" : "text-slate-500 hover:text-slate-700"}`}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${syncBy === "nomor_id" ? "bg-white text-purple-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
                         >
                             SYNC ID SKU
                         </button>
                         <button
                             onClick={() => setSyncBy("sku_platform")}
-                            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${syncBy === "sku_platform" ? "bg-white text-purple-600 shadow-lg shadow-purple-600/10" : "text-slate-500 hover:text-slate-700"}`}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${syncBy === "sku_platform" ? "bg-white text-purple-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
                         >
                             SYNC SKU PLATFORM
                         </button>
                     </div>
 
-                    <div className="h-10 w-px bg-slate-200 hidden md:block"></div>
+                    <div className="h-8 w-px bg-slate-200 hidden md:block"></div>
 
-                    <label className="bg-white hover:bg-slate-50 text-emerald-600 border border-emerald-200 px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-sm">
-                        <Upload className="w-4 h-4" /> Import Excel
+                    <label className="bg-white hover:bg-slate-50 text-emerald-600 border border-emerald-200 px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-sm">
+                        <Upload className="w-3.5 h-3.5" /> Import Excel
                         <input type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={handleImport} />
                     </label>
 
@@ -309,67 +330,70 @@ export default function ComparePage() {
                         initial={{ y: 100, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: 100, opacity: 0 }}
-                        className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-5 rounded-[2.5rem] shadow-2xl z-[100] flex items-center gap-8 border border-white/10 backdrop-blur-xl"
+                        className="fixed bottom-10 right-10 bg-slate-900 text-white px-10 py-6 rounded-[2rem] shadow-2xl z-[100] flex items-center gap-8 border border-white/10 backdrop-blur-xl"
                     >
                         <div className="flex flex-col border-r border-white/10 pr-8">
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Selection</span>
-                            <span className="text-xl font-black">{selectedIds.length} <span className="text-sm font-bold text-slate-400 ml-1">Items Selected</span></span>
+                            <span className="text-xl font-black">{selectedIds.length} <span className="text-sm font-bold text-slate-400 ml-1">Items</span></span>
                         </div>
                         <div className="flex items-center gap-4">
                             <button onClick={handleBulkDownload} className="flex items-center gap-2 hover:bg-emerald-600/20 text-emerald-400 px-5 py-3 rounded-xl transition-all font-black text-sm uppercase tracking-wider">
-                                <Download className="w-4 h-4" /> Download
+                                <Download className="w-5 h-5" /> Download
                             </button>
                             <button onClick={handleBulkDelete} className="flex items-center gap-2 hover:bg-red-600/20 text-red-400 px-5 py-3 rounded-xl transition-all font-black text-sm uppercase tracking-wider">
-                                <Trash2 className="w-4 h-4" /> Delete
+                                <Trash2 className="w-5 h-5" /> Delete
                             </button>
                         </div>
                         <button onClick={() => setSelectedIds([])} className="p-2 hover:bg-white/10 rounded-full transition-all">
-                            <X size={20} className="text-slate-400" />
+                            <X size={24} className="text-slate-400" />
                         </button>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* Data Management Card */}
-            <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-2xl shadow-slate-200/50">
-                {/* Search & Filter Bar */}
-                <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6 bg-slate-50/30">
-                    <div className="relative flex-1 max-w-2xl">
-                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            {/* Data Management Card - Flexible Container */}
+            <div className="flex-1 bg-white rounded-[1.5rem] border border-slate-200 overflow-hidden shadow-xl shadow-slate-200/50 flex flex-col min-h-0">
+                {/* Search & Filter Bar - Fixed Top */}
+                <div className="flex-none p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/30">
+                    <div className="relative flex-1 max-w-xl">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input
                             type="text"
-                            placeholder="Search by Order ID, SKU Platform, or ID SKU..."
+                            placeholder="Search..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && fetchProducts()}
-                            className="w-full bg-white border border-slate-200 rounded-2xl py-4 pl-14 pr-6 text-sm outline-none focus:ring-4 focus:ring-purple-600/5 focus:border-purple-600/40 transition-all font-medium shadow-sm transition-all"
+                            className="w-full bg-white border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-xs outline-none focus:ring-4 focus:ring-purple-600/5 focus:border-purple-600/40 transition-all font-medium shadow-sm"
                         />
                     </div>
-                    <div className="flex items-center gap-6">
-                        <div className="flex items-center gap-3">
-                            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Show</span>
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Show</span>
                             <select
                                 value={limit}
                                 onChange={(e) => handleLimitChange(Number(e.target.value))}
-                                className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-black outline-none focus:border-purple-600 transition-all"
+                                className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-purple-600 transition-all"
                             >
-                                <option value={10}>10 Rows</option>
-                                <option value={25}>25 Rows</option>
-                                <option value={50}>50 Rows</option>
-                                <option value={100}>100 Rows</option>
-                                <option value={300}>300 Rows</option>
+                                <option value={10}>10</option>
+                                <option value={25}>25</option>
+                                <option value={50}>50</option>
+                                <option value={100}>100</option>
+                                <option value={300}>300</option>
                             </select>
                         </div>
-                        <button onClick={fetchProducts} className="p-3 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-500 transition-all shadow-sm active:scale-95">
-                            <RefreshCcw className="w-5 h-5" />
+                        <button onClick={fetchProducts} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 transition-all shadow-sm active:scale-95">
+                            <RefreshCcw className="w-4 h-4" />
+                        </button>
+                        <button onClick={handleBulkCompare} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all text-xs font-black uppercase tracking-wider shadow-lg shadow-purple-600/20 active:scale-95 flex items-center gap-2">
+                            {isComparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Compare"}
                         </button>
                     </div>
                 </div>
 
-                {/* Table Container */}
-                <div className="overflow-x-auto relative min-h-[400px]">
+                {/* Table Container - Scrollable Area */}
+                <div className="flex-1 overflow-auto relative scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300">
                     {isLoading && (
-                        <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-10 flex items-center justify-center">
+                        <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-50 flex items-center justify-center">
                             <div className="flex flex-col items-center gap-4">
                                 <Loader2 className="w-10 h-10 text-purple-600 animate-spin" />
                                 <span className="font-black text-slate-900 uppercase tracking-widest text-xs">Syncing Data...</span>
@@ -378,168 +402,187 @@ export default function ComparePage() {
                     )}
 
                     <table className="w-full text-left border-collapse min-w-[1200px]">
-                        <thead className="sticky top-0 z-20">
-                            <tr className="bg-slate-50/80 backdrop-blur-md text-slate-400 uppercase text-[10px] font-black tracking-[0.2em] border-b border-slate-200">
-                                <th className="px-8 py-6 w-12 text-center">
+                        <thead className="sticky top-0 z-40 bg-white shadow-sm ring-1 ring-black/5">
+                            <tr className="text-slate-400 uppercase text-[10px] font-black tracking-[0.1em]">
+                                <th className="px-6 py-4 w-12 text-center bg-slate-50/90 backdrop-blur border-b border-slate-200">
                                     <input
                                         type="checkbox"
                                         onChange={toggleSelectAll}
                                         checked={selectedIds.length === products.length && products.length > 0}
-                                        className="w-5 h-5 rounded-lg border-slate-300 text-purple-600 focus:ring-purple-500 transition-all"
+                                        className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 transition-all"
                                     />
                                 </th>
-                                <th className="px-4 py-6 text-center">Gambar Produk</th>
-                                <th className="px-4 py-6 text-center">Gambar Upload</th>
-                                <th className="px-6 py-6">SKU Platform</th>
-                                <th className="px-6 py-6 text-center">Jumlah</th>
-                                <th className="px-6 py-6">No. Pesanan</th>
-                                <th className="px-6 py-6">ID SKU</th>
-                                <th className="px-6 py-6">ID Produk</th>
-                                <th className="px-6 py-6 text-center bg-purple-50/50">Hasil Compare</th>
-                                <th className="px-8 py-6 text-right">Actions</th>
+                                <th className="px-4 py-4 text-center bg-slate-50/90 backdrop-blur border-b border-slate-200">Gambar Produk</th>
+                                <th className="px-4 py-4 text-center bg-slate-50/90 backdrop-blur border-b border-slate-200">Gambar Upload</th>
+
+                                {[
+                                    { id: 'sku_platform', label: 'SKU Platform' },
+                                    { id: 'jumlah_barang', label: 'Jumlah', center: true },
+                                    { id: 'no_pesanan', label: 'No. Pesanan' },
+                                    { id: 'nomor_id', label: 'ID SKU' },
+                                    { id: 'id_produk', label: 'ID Produk' },
+                                ].map((col) => (
+                                    <th
+                                        key={col.id}
+                                        className={`px-6 py-4 bg-slate-50/90 backdrop-blur border-b border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors select-none ${col.center ? 'text-center' : ''}`}
+                                        onClick={() => handleSort(col.id)}
+                                    >
+                                        <div className={`flex items-center gap-1 ${col.center ? 'justify-center' : ''}`}>
+                                            {col.label} <SortIcon column={col.id} />
+                                        </div>
+                                    </th>
+                                ))}
+
+                                <th className="px-6 py-4 text-center bg-purple-50/90 backdrop-blur border-b border-purple-100/50">Hasil Compare</th>
+                                <th className="px-6 py-4 text-right bg-slate-50/90 backdrop-blur border-b border-slate-200">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody className="divide-y divide-slate-50">
                             {products.map((product) => {
                                 const isSelected = selectedIds.includes(product.id);
                                 const isMissingUpload = !product.image_upload && isSelected;
                                 return (
-                                    <motion.tr
-                                        layout
+                                    <tr
                                         key={product.id}
-                                        className={`group hover:bg-slate-50 transition-all ${isSelected ? "bg-purple-50/30" : ""} ${isMissingUpload ? "bg-red-50 border-y-2 border-red-500" : ""}`}
+                                        className={`group hover:bg-slate-50/80 transition-all ${isSelected ? "bg-purple-50/30" : "bg-white"} ${isMissingUpload ? "bg-red-50 border-y-2 border-red-500" : ""}`}
                                     >
-                                        <td className="px-8 py-8 text-center">
+                                        <td className="px-6 py-4 text-center">
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
                                                 onChange={() => toggleSelectOne(product.id)}
-                                                className="w-5 h-5 rounded-lg border-slate-300 text-purple-600 focus:ring-purple-500 transition-all"
+                                                className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 transition-all"
                                             />
                                         </td>
-                                        <td className="px-4 py-8 text-center">
-                                            <div className="w-20 h-20 rounded-2xl bg-white border border-slate-200 p-1.5 shadow-sm group-hover:scale-110 transition-transform mx-auto">
+                                        <td className="px-4 py-4 text-center">
+                                            <div className="w-16 h-16 rounded-xl bg-white border border-slate-100 p-1 group-hover:scale-105 transition-transform mx-auto">
                                                 {product.sku_gambar ? (
-                                                    <img src={product.sku_gambar} className="w-full h-full object-cover rounded-xl" />
+                                                    <img src={product.sku_gambar} className="w-full h-full object-cover rounded-lg" loading="lazy" />
                                                 ) : (
-                                                    <div className="w-full h-full flex items-center justify-center bg-slate-50 rounded-xl text-slate-300"><ImageIcon size={24} /></div>
+                                                    <div className="w-full h-full flex items-center justify-center bg-slate-50 rounded-lg text-slate-300"><ImageIcon size={20} /></div>
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-4 py-8 text-center">
-                                            <div className="w-20 h-20 rounded-2xl bg-white border border-slate-200 p-1.5 shadow-sm group-hover:shadow-md transition-all mx-auto relative overflow-hidden">
+                                        <td className="px-4 py-4 text-center">
+                                            <div
+                                                className="w-16 h-16 rounded-xl bg-white border border-slate-100 p-1 group-hover:shadow-md transition-all mx-auto relative overflow-hidden"
+                                                onDragOver={(e) => {
+                                                    e.preventDefault();
+                                                    e.currentTarget.classList.add('border-purple-500', 'ring-2', 'ring-purple-200');
+                                                }}
+                                                onDragLeave={(e) => {
+                                                    e.preventDefault();
+                                                    e.currentTarget.classList.remove('border-purple-500', 'ring-2', 'ring-purple-200');
+                                                }}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    e.currentTarget.classList.remove('border-purple-500', 'ring-2', 'ring-purple-200');
+                                                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                                        handleFileUpload(product.id, e.dataTransfer.files[0]);
+                                                    }
+                                                }}
+                                            >
                                                 {product.image_upload ? (
-                                                    <img src={`${API_BASE}/${product.image_upload}`} className="w-full h-full object-cover rounded-xl" />
+                                                    <img src={`${API_BASE}/${product.image_upload}`} className="w-full h-full object-cover rounded-lg" loading="lazy" />
                                                 ) : (
-                                                    <label className="w-full h-full flex flex-col items-center justify-center bg-slate-50 hover:bg-purple-50 rounded-xl text-slate-300 hover:text-purple-600 cursor-pointer transition-colors border-2 border-dashed border-slate-100 uppercase text-[8px] font-black">
-                                                        <Plus size={20} className="mb-1" /> Add Image
+                                                    <label className="w-full h-full flex flex-col items-center justify-center bg-slate-50 hover:bg-purple-50 rounded-lg text-slate-300 hover:text-purple-600 cursor-pointer transition-colors border-2 border-dashed border-slate-100 uppercase text-[6px] font-black pointer-events-none">
+                                                        <Plus size={16} className="mb-0.5" /> Add
                                                         <input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && handleFileUpload(product.id, e.target.files[0])} />
                                                     </label>
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-8">
-                                            <span className="text-xs font-black px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg uppercase tracking-wider">{product.sku_platform}</span>
+                                        <td className="px-6 py-4">
+                                            <span className="text-[10px] font-black px-2 py-1 bg-slate-100 text-slate-600 rounded-md uppercase tracking-wider">{product.sku_platform}</span>
                                         </td>
-                                        <td className="px-6 py-8 text-center">
-                                            <span className="text-sm font-black text-slate-900 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">{product.jumlah_barang}</span>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className="text-xs font-black text-slate-900 bg-slate-50 px-2 py-1 rounded border border-slate-100">{product.jumlah_barang}</span>
                                         </td>
-                                        <td className="px-6 py-8">
-                                            <div className="flex flex-col gap-1">
-                                                <span className="text-sm font-black text-slate-900">#{product.no_pesanan}</span>
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-black text-slate-900">#{product.no_pesanan}</span>
                                                 <span className="text-[10px] text-slate-400 font-bold truncate max-w-[150px]">{product.spesifikasi_produk || "-"}</span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-8">
-                                            <span className="text-sm font-black text-slate-700 font-mono">{product.nomor_id}</span>
+                                        <td className="px-6 py-4">
+                                            <span className="text-xs font-black text-slate-700 font-mono">{product.nomor_id}</span>
                                         </td>
-                                        <td className="px-6 py-8">
-                                            <span className="text-sm font-black text-slate-500 font-mono">{product.id_produk || "-"}</span>
+                                        <td className="px-6 py-4">
+                                            <span className="text-xs font-black text-slate-500 font-mono">{product.id_produk || "-"}</span>
                                         </td>
-                                        <td className="px-6 py-8 text-center bg-purple-50/30">
+                                        <td className="px-6 py-4 text-center bg-purple-50/30">
                                             {product.preview_image ? (
                                                 <a
                                                     href={`${API_BASE}/${product.final_image}`}
                                                     target="_blank"
                                                     className="inline-block relative group/preview"
                                                 >
-                                                    <div className="w-20 h-20 rounded-2xl p-1 bg-white border border-purple-200 shadow-lg shadow-purple-600/5 group-hover/preview:shadow-purple-600/20 transition-all">
-                                                        <img src={`${API_BASE}/${product.preview_image}`} className="w-full h-full object-cover rounded-xl" />
-                                                        <div className="absolute inset-0 bg-purple-900/40 rounded-2xl opacity-0 group-hover/preview:opacity-100 transition-all flex items-center justify-center">
-                                                            <ExternalLink size={20} className="text-white scale-75 group-hover/preview:scale-100 transition-transform" />
+                                                    <div className="w-16 h-16 rounded-xl p-1 bg-white border border-purple-200 shadow-sm group-hover/preview:shadow-purple-600/10 transition-all">
+                                                        <img src={`${API_BASE}/${product.preview_image}`} className="w-full h-full object-cover rounded-lg" loading="lazy" />
+                                                        <div className="absolute inset-0 bg-purple-900/40 rounded-xl opacity-0 group-hover/preview:opacity-100 transition-all flex items-center justify-center">
+                                                            <ExternalLink size={16} className="text-white scale-75 group-hover/preview:scale-100 transition-transform" />
                                                         </div>
                                                     </div>
                                                 </a>
                                             ) : (
-                                                <div className="w-20 h-20 rounded-2xl border-2 border-dashed border-purple-100 flex items-center justify-center text-purple-100 mx-auto bg-white/50">
-                                                    <ImageIcon size={32} />
+                                                <div className="w-16 h-16 rounded-xl border-2 border-dashed border-purple-100 flex items-center justify-center text-purple-100 mx-auto bg-white/50">
+                                                    <ImageIcon size={24} />
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="px-8 py-8 text-right">
-                                            <div className="flex items-center justify-end gap-2 transition-all">
-                                                <label className="p-3 bg-blue-600 text-white hover:bg-blue-700 rounded-xl cursor-pointer transition-all shadow-lg shadow-blue-600/20">
-                                                    <Upload size={18} />
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex items-center justify-end gap-2 transition-all opacity-0 group-hover:opacity-100">
+                                                <label className="p-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg cursor-pointer transition-all shadow-lg shadow-blue-600/20">
+                                                    <Upload size={14} />
                                                     <input type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && handleFileUpload(product.id, e.target.files[0])} />
                                                 </label>
-
                                             </div>
                                         </td>
-                                    </motion.tr>
+                                    </tr>
                                 );
                             })}
                         </tbody>
                     </table>
 
                     {products.length === 0 && !isLoading && (
-                        <div className="py-32 flex flex-col items-center text-center">
-                            <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mb-8 border border-slate-100">
-                                <Search size={48} className="text-slate-200" />
+                        <div className="py-20 flex flex-col items-center text-center">
+                            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+                                <Search size={32} className="text-slate-200" />
                             </div>
-                            <h3 className="text-2xl font-black text-slate-900 mb-2">No results found</h3>
-                            <p className="text-slate-400 font-bold text-sm max-w-sm">Adjust your filters or sync with market to see your inventory.</p>
-                            <button onClick={fetchProducts} className="mt-8 bg-purple-600 text-white px-8 py-3 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-purple-600/30 hover:bg-purple-500 transition-all active:scale-95">
-                                Refresh Catalog
-                            </button>
+                            <h3 className="text-lg font-black text-slate-900 mb-1">No results found</h3>
+                            <p className="text-slate-400 font-bold text-xs">Try adjusting your filters</p>
                         </div>
                     )}
                 </div>
 
-                {/* Pagination Footer */}
-                <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-6">
-                    <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-4">
-                        <span>Showing <span className="text-slate-900">{(page - 1) * limit + 1}</span> to <span className="text-slate-900">{Math.min(page * limit, total)}</span> of <span className="text-slate-900 font-mono tracking-normal">{total}</span> Entries</span>
-                        {selectedIds.length > 0 && (
-                            <span className="text-emerald-600 font-black flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 bg-emerald-600 rounded-full animate-pulse"></span>
-                                Sudah Dipilih {selectedIds.length} / {products.length} Item
-                            </span>
-                        )}
+                {/* Pagination Footer - Fixed Bottom of Card */}
+                <div className="flex-none p-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4 z-20">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.1em] flex items-center gap-4">
+                        <span>Showing <span className="text-slate-900">{(page - 1) * limit + 1}</span> - <span className="text-slate-900">{Math.min(page * limit, total)}</span> of <span className="text-slate-900">{total}</span></span>
                     </p>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                         <button
                             disabled={page === 1}
                             onClick={() => setPage(p => Math.max(1, p - 1))}
-                            className="p-3 bg-white border border-slate-200 rounded-xl text-slate-500 hover:text-purple-600 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-sm active:scale-95"
+                            className="p-2 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-purple-600 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-sm active:scale-95"
                         >
-                            <ChevronLeft size={20} />
+                            <ChevronLeft size={16} />
                         </button>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                             {[...Array(Math.ceil(total / limit))].map((_, i) => {
                                 const p = i + 1;
-                                // Basic pagination ellipsis logic (show first, last, and around current)
                                 if (p === 1 || p === Math.ceil(total / limit) || (p >= page - 1 && p <= page + 1)) {
                                     return (
                                         <button
                                             key={p}
                                             onClick={() => setPage(p)}
-                                            className={`w-10 h-10 rounded-xl text-xs font-black transition-all ${page === p ? "bg-purple-600 text-white shadow-xl shadow-purple-600/20" : "bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 shadow-sm"}`}
+                                            className={`w-8 h-8 rounded-lg text-[10px] font-black transition-all ${page === p ? "bg-purple-600 text-white shadow-lg shadow-purple-600/20" : "bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 shadow-sm"}`}
                                         >
                                             {p}
                                         </button>
                                     );
                                 } else if (p === page - 2 || p === page + 2) {
-                                    return <span key={p} className="text-slate-300 font-black px-1">...</span>;
+                                    return <span key={p} className="text-slate-300 font-black px-1 text-xs">...</span>;
                                 }
                                 return null;
                             })}
@@ -547,13 +590,14 @@ export default function ComparePage() {
                         <button
                             disabled={page >= Math.ceil(total / limit)}
                             onClick={() => setPage(p => p + 1)}
-                            className="p-3 bg-white border border-slate-200 rounded-xl text-slate-500 hover:text-purple-600 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-sm active:scale-95"
+                            className="p-2 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-purple-600 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-sm active:scale-95"
                         >
-                            <ChevronRight size={20} />
+                            <ChevronRight size={16} />
                         </button>
                     </div>
                 </div>
             </div>
+
 
             {/* Upload Modal Overlay */}
             <AnimatePresence>
