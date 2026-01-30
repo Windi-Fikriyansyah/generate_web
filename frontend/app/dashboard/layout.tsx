@@ -31,23 +31,28 @@ export default function DashboardLayout({
         { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard/compare" },
     ];
 
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
     useEffect(() => {
         const token = localStorage.getItem("token");
         if (!token) {
             router.push("/login");
         } else {
             // Fetch user data
-            fetch("http://localhost:8001/users/me", {
+            fetch(`${API_BASE}/users/me`, {
                 headers: { "Authorization": `Bearer ${token}` }
             })
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) throw new Error("Failed to fetch user");
+                    return res.json();
+                })
                 .then(data => setUserData(data))
                 .catch(() => {
                     localStorage.removeItem("token");
                     router.push("/login");
                 });
         }
-    }, []);
+    }, [router, API_BASE]);
 
     const handleLogout = () => {
         localStorage.removeItem("token");
@@ -79,8 +84,8 @@ export default function DashboardLayout({
                                 key={item.label}
                                 onClick={() => router.push(item.path)}
                                 className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all group whitespace-nowrap ${isActive
-                                        ? "bg-purple-600 text-white shadow-lg shadow-purple-600/30"
-                                        : "hover:bg-purple-50 text-slate-500 hover:text-purple-600"
+                                    ? "bg-purple-600 text-white shadow-lg shadow-purple-600/30"
+                                    : "hover:bg-purple-50 text-slate-500 hover:text-purple-600"
                                     }`}
                             >
                                 <item.icon className={`w-6 h-6 shrink-0 ${isActive ? "text-white" : "group-hover:text-purple-600"}`} />
