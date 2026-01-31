@@ -206,8 +206,9 @@ export default function ComparePage() {
     const handleFileUpload = async (productId: number, file: File) => {
         setUploadingId(productId);
         setIsUploadModalOpen(true);
+        setUploadProgress(0);
 
-        const CHUNK_SIZE = 1 * 1024 * 1024; // Lower chunk size for smoother progress
+        const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
         const fileUuid = Math.random().toString(36).substring(7);
         let lastResponseIds: number[] = [];
@@ -226,25 +227,46 @@ export default function ComparePage() {
             formData.append("product_id", productId.toString());
             formData.append("sync_by", syncBy);
 
-            const response = await axios.post(`${API_BASE}/upload-chunk`, formData);
+            try {
+                const response = await axios.post(`${API_BASE}/upload-chunk`, formData, {
+                    onUploadProgress: (progressEvent) => {
+                        if (progressEvent.total) {
+                            const chunkUploaded = progressEvent.loaded;
+                            const totalUploadedSoFar = (i * CHUNK_SIZE) + chunkUploaded;
+                            const percent = Math.min(100, Math.round((totalUploadedSoFar / file.size) * 100));
 
-            const p = Math.round(((i + 1) / totalChunks) * 100);
-            setUploadProgress(p);
-            setUploadInfo({
-                current: Number((end / (1024 * 1024)).toFixed(1)),
-                total: Number((file.size / (1024 * 1024)).toFixed(1))
-            });
+                            setUploadProgress(percent);
+                            setUploadInfo({
+                                current: Number((Math.min(totalUploadedSoFar, file.size) / (1024 * 1024)).toFixed(1)),
+                                total: Number((file.size / (1024 * 1024)).toFixed(1))
+                            });
 
-            // If final chunk
-            if (i === totalChunks - 1 && response.data.ids) {
-                lastResponseIds = response.data.ids;
-                // Start polling in background
-                startPolling(response.data.ids);
+                            // Instant close at 100% upload, ensuring no "stacking" while waiting for server merge
+                            if (i === totalChunks - 1 && percent >= 100) {
+                                setIsUploadModalOpen(false);
+                            }
+                        }
+                    }
+                });
+
+                // If final chunk
+                if (i === totalChunks - 1 && response.data.ids) {
+                    lastResponseIds = response.data.ids;
+                    // Start polling in background
+                    startPolling(response.data.ids);
+                }
+            } catch (err) {
+                console.error(err);
+                setIsUploadModalOpen(false);
+                toast.error("Gagal mengunggah gambar");
+                setUploadingId(null);
+                return;
             }
         }
 
 
         setUploadingId(null);
+        // Ensure modal is closed (in case logic above didn't trigger)
         setIsUploadModalOpen(false);
         toast.success("Gambar berhasil diunggah! Komparasi berjalan di background.");
 
