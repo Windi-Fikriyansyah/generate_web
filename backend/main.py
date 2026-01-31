@@ -270,50 +270,29 @@ async def download_zip(ids: list[int], db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No processed images found")
         
     zip_name = f"storage/all_images_{int(datetime.now().timestamp())}.zip"
+    used_names = {}
+
     with zipfile.ZipFile(zip_name, 'w') as zipf:
         for product in products:
             if os.path.exists(product.final_image):
                 qty = product.jumlah_barang or 1
                 ext = product.final_image.split('.')[-1]
+                safe_no_pesanan = str(product.no_pesanan).replace('/', '-').replace('\\', '-')
+                
                 for i in range(1, qty + 1):
-                    # Use index only if qty > 1, otherwise just the order number + unique suffix if needed
-                    if qty > 1:
-                        zip_entry_name = f"Final_{product.no_pesanan}_{i}.{ext}"
+                    # Always include the index suffix as requested
+                    base_name = f"Final_{safe_no_pesanan}_{i}"
+                    
+                    final_name = f"{base_name}.{ext}"
+                    
+                    # Handle duplicate names across different products with same order number
+                    if final_name in used_names:
+                        used_names[final_name] += 1
+                        final_name = f"{base_name}({used_names[final_name]}).{ext}"
                     else:
-                        zip_entry_name = f"Final_{product.no_pesanan}.{ext}"
-                    
-                    # Handle potential duplicate names in the zip by checking/appending index if needed
-                    # Since we can't easily check what's in the zip stream, we'll ensure uniqueness by adding product ID if multiple items have same order number
-                    # But simpler approach: Always append product ID to be safe if uniqueness is key
-                    # zip_entry_name = f"Final_{product.no_pesanan}_{product.id}_{i}.{ext}"
-                    
-                    # Reverting to user requirement: "Final_(Nomor pesanan)_index"
-                    # But if multiple products have SAME no_pesanan, we have a problem.
-                    # Let's assume unique no_pesanan per row for now, or just append a counter.
-                    
-                    # Improved logic:
-                    base_name = f"Final_{product.no_pesanan}"
-                    if qty > 1:
-                        zip_entry_name = f"{base_name}_{i}.{ext}"
-                    else:
-                         zip_entry_name = f"{base_name}.{ext}"
-
-                    # Write to zip (if duplicate name exists, zipfile allows it but it's confusing. 
-                    # We should probably enforce unique names if the user report is about overwrite)
-                    
-                    # Let's strictly follow "Final_(Nomor pesanan)_index" as per previous request, 
-                    # but if the user says "what downloaded is not appropriate", maybe they mean the content doesn't match the row?
-                    # Let's double check the filter. 
-                    # The filter is `Product.id.in_(ids)`. This logic seems correct for selection.
-                    
-                    # Potential Issue: If `no_pesanan` contains slashes or invalid chars for filenames?
-                    safe_no_pesanan = str(product.no_pesanan).replace('/', '-').replace('\\', '-')
-                    if qty > 1:
-                        zip_entry_name = f"Final_{safe_no_pesanan}_{i}.{ext}"
-                    else:
-                        zip_entry_name = f"Final_{safe_no_pesanan}.{ext}"
+                        used_names[final_name] = 0
                         
-                    zipf.write(product.final_image, zip_entry_name)
+                    zipf.write(product.final_image, final_name)
                     
     return FileResponse(zip_name, media_type="application/zip", filename=os.path.basename(zip_name))
 
