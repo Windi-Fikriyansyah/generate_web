@@ -164,14 +164,27 @@ export default function ComparePage() {
     }, [fetchProducts]);
 
     const handleBulkCompare = async () => {
-        const idsToCompare = selectedIds.length > 0 ? selectedIds : products.filter(p => p.image_upload).map(p => p.id);
-        if (idsToCompare.length === 0) return;
-
-        try {
-            await axios.post(`${API_BASE}/products/compare`, idsToCompare);
-            startPolling(idsToCompare);
-        } catch (err) {
-            toast.error("Gagal memproses komparasi");
+        if (selectedIds.length > 0) {
+            try {
+                await axios.post(`${API_BASE}/products/compare`, selectedIds);
+                startPolling(selectedIds);
+            } catch (err) {
+                toast.error("Gagal memproses komparasi");
+            }
+        } else {
+            try {
+                const res = await axios.post(`${API_BASE}/products/compare-pending`);
+                if (res.data.ids && res.data.ids.length > 0) {
+                    startPolling(res.data.ids);
+                    if (res.data.count > 0) {
+                        toast.success(`Memulai komparasi untuk ${res.data.count} data baru`);
+                    }
+                } else {
+                    toast.error("Tidak ada data baru untuk dikomparasi");
+                }
+            } catch (err) {
+                toast.error("Gagal memproses komparasi");
+            }
         }
     };
 
@@ -252,8 +265,6 @@ export default function ComparePage() {
                 // If final chunk
                 if (i === totalChunks - 1 && response.data.ids) {
                     lastResponseIds = response.data.ids;
-                    // Start polling in background
-                    startPolling(response.data.ids);
                 }
             } catch (err) {
                 console.error(err);
@@ -268,7 +279,7 @@ export default function ComparePage() {
         setUploadingId(null);
         // Ensure modal is closed (in case logic above didn't trigger)
         setIsUploadModalOpen(false);
-        toast.success("Gambar berhasil diunggah! Komparasi berjalan di background.");
+        toast.success("Gambar berhasil diunggah! Klik tombol Compare untuk memproses.");
 
         // Optimistic UI Update: Show the image immediately using Blob URL
         const blobUrl = URL.createObjectURL(file);

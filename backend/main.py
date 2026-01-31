@@ -240,6 +240,26 @@ async def run_compare_bulk(ids: list[int], db: Session = Depends(get_db)):
     db.commit()
     return {"message": f"Processing started for {len(products)} products"}
 
+@app.post("/products/compare-pending")
+async def compare_pending(db: Session = Depends(get_db)):
+    # Find products that have an image uploaded but haven't been processed yet
+    products = db.query(Product).filter(
+        Product.image_upload.isnot(None),
+        Product.final_image.is_(None)
+    ).all()
+    
+    if not products:
+        return {"message": "No pending products to compare", "count": 0, "ids": []}
+        
+    ids = []
+    for product in products:
+        product.final_image = None
+        product.preview_image = None
+        run_processing_task.delay(product.id, product.image_upload)
+        ids.append(product.id)
+        
+    return {"message": f"Started comparison for {len(products)} pending products", "count": len(products), "ids": ids}
+
 import zipfile
 from fastapi.responses import FileResponse
 

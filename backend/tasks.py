@@ -66,26 +66,15 @@ def merge_and_process(file_uuid, file_name, total_chunks, product_id, sync_by):
                 p.image_upload = final_path
                 p.final_image = None
                 p.preview_image = None
-                ids_to_process.append(p.id)
         else:
             product.image_upload = final_path
             product.final_image = None
             product.preview_image = None
-            ids_to_process.append(product.id)
             
         db.commit()
         
-        # 4. Trigger Image Processing (In-process or sub-task? Processing is heavy.)
-        # Since we are already in a Celery worker, we can run the processing function directly.
-        # No need to spawn another task unless we want parallelism per image.
-        # However, if we have 100 synchronized products, processing them sequentially in one task might block the worker too long (stacking tasks).
-        # Better: Spawn individual process tasks for each product.
+        print(f"Merge complete for {file_name}. Ready for manual comparison.")
         
-        print(f"Merge complete. Spawning {len(ids_to_process)} processing tasks.")
-        
-        for pid in ids_to_process:
-            run_processing_task.delay(pid, final_path)
-            
     except Exception as e:
         print(f"Db update error: {e}")
     finally:
