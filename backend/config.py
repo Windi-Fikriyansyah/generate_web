@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     FONT_PATH: str = os.getenv("FONT_PATH", "fonts/Roboto-Bold.ttf")
     SECRET_KEY: str = "b9e31d3f9b8c4d29a5f4e6d7c8b9a1e2f3g4h5i6j7k8l9m0n1o2p3q4r5s6t7u8"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200 # 30 Days
 
     model_config = SettingsConfigDict(
         env_file=".env",
