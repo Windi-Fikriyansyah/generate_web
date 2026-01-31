@@ -24,10 +24,6 @@ celery_app.conf.update(
     task_track_started=True,
 )
 
-# We import the task here to avoid circular imports
-@celery_app.task(name="run_processing_task")
-def run_processing_task(product_id: int, upload_path: str):
-    # This task will be imported and implemented in main.py or a tasks.py
-    # For now, we'll keep the logic in main.py and just use this as a wrapper
-    from main import run_processing_sync
-    run_processing_sync(product_id, upload_path)
+# Import tasks module to ensure they are registered
+import tasks
+

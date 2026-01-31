@@ -14,35 +14,14 @@ from jose import JWTError, jwt
 import bcrypt
 import redis
 from config import settings
-from celery_app import run_processing_task
 
-# Database
-SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
-Base = declarative_base()
+# Removing celery_app import from here if not used directly, 
+# but run_processing_task might be used in other endpoints.
 
-class Product(Base):
-    __tablename__ = "products"
-    id = Column(BigInteger, primary_key=True, index=True)
-    sku_gambar = Column(String)
-    image_upload = Column(String)
-    preview_image = Column(String)
-    final_image = Column(String)
-    sku_platform = Column(String)
-    jumlah_barang = Column(Integer, default=1)
-    no_pesanan = Column(String)
-    nomor_resi = Column(String)
-    id_produk = Column(String)
-    spesifikasi_produk = Column(Text)
-    nomor_id = Column(String)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-    is_active = Column(Boolean, default=True)
+from database import engine, SessionLocal, get_db, Base
+from models import Product, User
+
 
 # Auth Configuration
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -66,15 +45,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-# Initialize engine
-from sqlalchemy import create_engine
-if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-else:
-    engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Initialize DB tables
 Base.metadata.create_all(bind=engine)
+
 
 # Seed Admin User
 def seed_admin():
@@ -113,46 +87,12 @@ os.makedirs("storage/preview", exist_ok=True)
 os.makedirs("storage/chunks", exist_ok=True)
 app.mount("/storage", StaticFiles(directory="storage"), name="storage")
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# dependency get_db imported from database module
 
-from processor import process_product_image
 
-def run_processing_sync(product_id: int, upload_path: str):
-    db = SessionLocal()
-    try:
-        product = db.query(Product).filter(Product.id == product_id).first()
-        if not product:
-            return
-            
-        font_path = settings.FONT_PATH
-        print(f"Celery processing product {product_id} with font {font_path}")
-        
-        result = process_product_image({
-            "id": product.id,
-            "no_pesanan": product.no_pesanan,
-            "spesifikasi_produk": product.spesifikasi_produk,
-            "sku_platform": product.sku_platform,
-            "id_produk": product.id_produk,
-            "nomor_id": product.nomor_id,
-            "jumlah_barang": product.jumlah_barang
-        }, upload_path, font_path, sku_img_path=product.sku_gambar)
-        
-        if result.get("success"):
-            product.final_image = result["final"]
-            product.preview_image = result["preview"]
-            db.commit()
-            print(f"Celery processing complete for product {product_id}")
-    finally:
-        db.close()
+# Processing logic moved to tasks.py
+from tasks import merge_and_process, run_processing_task
 
-async def run_processing(product_id: int, upload_path: str):
-    # Wrapper to maintain async compatibility if needed, though we'll prefer .delay()
-    run_processing_task.delay(product_id, upload_path)
 
 @app.get("/products")
 async def get_products(
@@ -208,51 +148,22 @@ async def upload_chunk(
         buffer.write(await file.read())
         
     if chunkIndex == totalChunks - 1:
-        # Assemble
+        # Offload 'Assemble & Process' to Background Task
+        # We return success immediately so the UI doesn't freeze.
+        
         final_path = f"storage/uploads/{fileUuid}_{fileName}"
         
-        # Step 1: Merge all chunks
-        with open(final_path, "wb") as final_file:
-            for i in range(totalChunks):
-                chunk_file = f"storage/chunks/{fileUuid}_{i}"
-                with open(chunk_file, "rb") as cf:
-                    final_file.write(cf.read())
+        merge_and_process.delay(
+            fileUuid,
+            fileName,
+            totalChunks,
+            product_id,
+            sync_by
+        )
         
-        # Step 2: Cleanup chunks (separate loop to ensure file handles are released)
-        import time
-        time.sleep(0.1) # Brief pause for Windows file system to catch up
-        
-        for i in range(totalChunks):
-            chunk_file = f"storage/chunks/{fileUuid}_{i}"
-            try:
-                if os.path.exists(chunk_file):
-                    os.remove(chunk_file)
-            except Exception as e:
-                print(f"Warning: Failed to delete chunk {chunk_file}: {e}")
-        
-        db = SessionLocal()
-        product = db.query(Product).filter(Product.id == product_id).first()
-        if product:
-            # Sync Logic
-            sync_value = getattr(product, sync_by, None)
-            if sync_value and sync_by in ["nomor_id", "sku_platform"]:
-                affected_products = db.query(Product).filter(getattr(Product, sync_by) == sync_value).all()
-                for p in affected_products:
-                    p.image_upload = final_path
-                    p.final_image = None
-                    p.preview_image = None
-                    run_processing_task.delay(p.id, final_path)
-            else:
-                product.image_upload = final_path
-                product.final_image = None
-                product.preview_image = None
-                run_processing_task.delay(product.id, final_path)
-            
-            db.commit()
-            return {"message": "Upload complete and processing started", "path": final_path, "ids": [p.id for p in affected_products] if sync_value else [product.id]}
-        db.close()
-        
-        return {"message": "Upload complete and processing started", "path": final_path}
+        return {"message": "Upload assembled, processing in background.", "path": final_path, "ids": [product_id]}
+
+
     
     return {"message": f"Chunk {chunkIndex} received"}
 

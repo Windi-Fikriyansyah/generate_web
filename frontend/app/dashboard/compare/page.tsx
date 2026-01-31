@@ -207,9 +207,10 @@ export default function ComparePage() {
         setUploadingId(productId);
         setIsUploadModalOpen(true);
 
-        const CHUNK_SIZE = 5 * 1024 * 1024;
+        const CHUNK_SIZE = 1 * 1024 * 1024; // Lower chunk size for smoother progress
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
         const fileUuid = Math.random().toString(36).substring(7);
+        let lastResponseIds: number[] = [];
 
         for (let i = 0; i < totalChunks; i++) {
             const start = i * CHUNK_SIZE;
@@ -236,17 +237,55 @@ export default function ComparePage() {
 
             // If final chunk
             if (i === totalChunks - 1 && response.data.ids) {
+                lastResponseIds = response.data.ids;
+                // Start polling in background
                 startPolling(response.data.ids);
             }
         }
 
+
         setUploadingId(null);
         setIsUploadModalOpen(false);
-        toast.success("Gambar berhasil diunggah!");
-        fetchProducts();
+        toast.success("Gambar berhasil diunggah! Komparasi berjalan di background.");
 
-        // Auto trigger compare for the updated IDs (could be multiple if synced)
-        // For simplicity, we just reload the table which shows the new images
+        // Optimistic UI Update: Show the image immediately using Blob URL
+        const blobUrl = URL.createObjectURL(file);
+
+        setProducts(prev => prev.map(p => {
+            // Check if this product should be updated (same ID or part of synced group)
+            let shouldUpdate = false;
+
+            // Primary match
+            if (p.id === productId) shouldUpdate = true;
+
+            // Sync match
+            if (lastResponseIds && lastResponseIds.includes(p.id)) shouldUpdate = true;
+
+            // Manual sync fallback if response.data.ids is empty for some reason
+            if (syncBy === "nomor_id") {
+                const target = prev.find(item => item.id === productId);
+                if (target && target.nomor_id && p.nomor_id === target.nomor_id) shouldUpdate = true;
+            } else if (syncBy === "sku_platform") {
+                const target = prev.find(item => item.id === productId);
+                if (target && target.sku_platform && p.sku_platform === target.sku_platform) shouldUpdate = true;
+            }
+
+            if (shouldUpdate) {
+                return {
+                    ...p,
+                    image_upload: blobUrl,
+                    // Reset processed images as they are being re-processed
+                    final_image: null,
+                    preview_image: null
+                };
+            }
+            return p;
+        }));
+
+        // Do NOT call fetchProducts() immediately, as it would revert the optimistic update 
+        // before the server processing is done. 
+        // Rely on startPolling -> finish -> fetchProducts
+
     };
 
     // Import Logic
@@ -483,7 +522,11 @@ export default function ComparePage() {
                                                 }}
                                             >
                                                 {product.image_upload ? (
-                                                    <img src={`${API_BASE}/${product.image_upload}`} className="w-full h-full object-cover rounded-lg" loading="lazy" />
+                                                    <img
+                                                        src={product.image_upload.startsWith('blob:') ? product.image_upload : `${API_BASE}/${product.image_upload}`}
+                                                        className="w-full h-full object-cover rounded-lg"
+                                                        loading="lazy"
+                                                    />
                                                 ) : (
                                                     <label className="w-full h-full flex flex-col items-center justify-center bg-slate-50 hover:bg-purple-50 rounded-lg text-slate-300 hover:text-purple-600 cursor-pointer transition-colors border-2 border-dashed border-slate-100 uppercase text-[6px] font-black pointer-events-none">
                                                         <Plus size={16} className="mb-0.5" /> Add
