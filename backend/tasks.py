@@ -80,8 +80,16 @@ def merge_and_process(file_uuid, file_name, total_chunks, product_id, sync_by):
     finally:
         db.close()
 
+import redis
+r = redis.Redis(
+    host=settings.REDIS_HOST,
+    port=settings.REDIS_PORT,
+    db=settings.REDIS_DB,
+    decode_responses=True
+)
+
 @celery_app.task(name="tasks.run_processing_task")
-def run_processing_task(product_id: int, upload_path: str):
+def run_processing_task(product_id: int, upload_path: str, batch_id: str = None):
     db = SessionLocal()
     try:
         product = db.query(Product).filter(Product.id == product_id).first()
@@ -90,7 +98,7 @@ def run_processing_task(product_id: int, upload_path: str):
 
             
         font_path = settings.FONT_PATH
-        print(f"Worker processing product {product_id}")
+        print(f"Worker processing product {product_id} (Batch: {batch_id})")
         
         result = process_product_image({
             "id": product.id,
@@ -111,4 +119,9 @@ def run_processing_task(product_id: int, upload_path: str):
     except Exception as e:
         print(f"Processing task error: {e}")
     finally:
+        if batch_id:
+            # Increment progress for the batch
+            r.incr(f"progress:{batch_id}")
+            # Set expiry to 1 hour to clean up
+            r.expire(f"progress:{batch_id}", 3600)
         db.close()

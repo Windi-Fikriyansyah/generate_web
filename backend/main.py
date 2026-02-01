@@ -205,22 +205,75 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-@app.post("/products/bulk-delete")
-async def bulk_delete(ids: list[int], db: Session = Depends(get_db)):
-    products = db.query(Product).filter(Product.id.in_(ids)).all()
+import shutil
+import glob
+
+def cleanup_file_logic(product_ids, db: Session):
+    products = db.query(Product).filter(Product.id.in_(product_ids)).all()
     for product in products:
+        # Delete individual files linked to the product
         for attr in ["image_upload", "preview_image", "final_image"]:
             path = getattr(product, attr)
             if path and os.path.exists(path):
                 try: os.remove(path)
                 except: pass
         db.delete(product)
+
+@app.post("/products/bulk-delete")
+async def bulk_delete(ids: list[int], db: Session = Depends(get_db)):
+    cleanup_file_logic(ids, db)
     db.commit()
     return {"message": f"{len(ids)} products deleted"}
 
+@app.post("/products/delete-all")
+async def delete_all_products(db: Session = Depends(get_db)):
+    # 1. Get all product IDs
+    all_ids = [p.id for p in db.query(Product.id).all()]
+    
+    # 2. Cleanup product files and database entries
+    cleanup_file_logic(all_ids, db)
+    
+    # 3. Aggressive storage cleanup for anything leftover or dangling
+    # This ensures uploads, chunks, final, previews are wiped even if not linked in DB
+    folders_to_clear = ["storage/uploads", "storage/final", "storage/preview", "storage/chunks"]
+    for folder in folders_to_clear:
+        if os.path.exists(folder):
+            for filename in os.listdir(folder):
+                file_path = os.path.join(folder, filename)
+                try:
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    print(f'Failed to delete {file_path}. Reason: {e}')
+    
+    # 4. Remove all exported ZIP files
+    zip_files = glob.glob("storage/*.zip")
+    for zip_file in zip_files:
+        try: os.remove(zip_file)
+        except: pass
+
+    db.commit()
+    return {"message": "All products and associated files deleted successfully"}
+
 @app.get("/products/check-progress")
-async def check_progress(ids: str, db: Session = Depends(get_db)):
-    # ids come as comma separated string from frontend query param
+async def check_progress(ids: Optional[str] = None, batch_id: Optional[str] = None, db: Session = Depends(get_db)):
+    if batch_id:
+        # Check progress via Redis batch counter
+        done = int(r.get(f"progress:{batch_id}") or 0)
+        total = int(r.get(f"total:{batch_id}") or 0)
+        return {
+            "total": total,
+            "done": done,
+            "is_finished": total > 0 and done >= total,
+            "batch_id": batch_id
+        }
+    
+    if not ids:
+        return {"total": 0, "done": 0, "is_finished": True}
+
+    # fallback to original logic for backward compatibility
     id_list = [int(i) for i in ids.split(",")]
     total = len(id_list)
     done = db.query(Product).filter(Product.id.in_(id_list), Product.final_image.isnot(None)).count()
@@ -233,12 +286,18 @@ async def check_progress(ids: str, db: Session = Depends(get_db)):
 @app.post("/products/compare")
 async def run_compare_bulk(ids: list[int], db: Session = Depends(get_db)):
     products = db.query(Product).filter(Product.id.in_(ids), Product.image_upload.isnot(None)).all()
+    batch_id = str(uuid.uuid4())
+    
+    # Store total in Redis
+    r.set(f"total:{batch_id}", len(products), ex=3600)
+    r.set(f"progress:{batch_id}", 0, ex=3600)
+
     for product in products:
         product.final_image = None
         product.preview_image = None
-        run_processing_task.delay(product.id, product.image_upload)
+        run_processing_task.delay(product.id, product.image_upload, batch_id=batch_id)
     db.commit()
-    return {"message": f"Processing started for {len(products)} products"}
+    return {"message": f"Processing started for {len(products)} products", "batch_id": batch_id, "total": len(products)}
 
 @app.post("/products/compare-pending")
 async def compare_pending(db: Session = Depends(get_db)):
@@ -249,16 +308,20 @@ async def compare_pending(db: Session = Depends(get_db)):
     ).all()
     
     if not products:
-        return {"message": "No pending products to compare", "count": 0, "ids": []}
+        return {"message": "No pending products to compare", "count": 0, "ids": [], "batch_id": None}
         
+    batch_id = str(uuid.uuid4())
+    r.set(f"total:{batch_id}", len(products), ex=3600)
+    r.set(f"progress:{batch_id}", 0, ex=3600)
+
     ids = []
     for product in products:
         product.final_image = None
         product.preview_image = None
-        run_processing_task.delay(product.id, product.image_upload)
+        run_processing_task.delay(product.id, product.image_upload, batch_id=batch_id)
         ids.append(product.id)
         
-    return {"message": f"Started comparison for {len(products)} pending products", "count": len(products), "ids": ids}
+    return {"message": f"Started comparison for {len(products)} pending products", "count": len(products), "ids": ids, "batch_id": batch_id}
 
 import zipfile
 from fastapi.responses import FileResponse

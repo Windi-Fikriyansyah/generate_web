@@ -5,6 +5,10 @@ import time
 import requests
 from io import BytesIO
 
+# Caching for performance
+_font_cache = {}
+_sku_cache = {}
+
 def process_product_image(product, upload_path, font_path, sku_img_path=None):
     """
     Complete image composition mimicking the Laravel implementation.
@@ -13,11 +17,17 @@ def process_product_image(product, upload_path, font_path, sku_img_path=None):
         start_time = time.time()
         print(f"Processing image: {upload_path}, font: {font_path}")
         
-        # Helper to load font with fallback
+        # Helper to load font with caching
         def load_font(fpath, size):
+            cache_key = (fpath, size)
+            if cache_key in _font_cache:
+                return _font_cache[cache_key]
+            
             try:
                 if fpath and os.path.exists(fpath):
-                    return ImageFont.truetype(fpath, size)
+                    font = ImageFont.truetype(fpath, size)
+                    _font_cache[cache_key] = font
+                    return font
                 else:
                     print(f"CRITICAL: Font file not found at {fpath}, using default.")
             except Exception as fe:
@@ -68,19 +78,18 @@ def process_product_image(product, upload_path, font_path, sku_img_path=None):
         qr_x = box_x + header_w_px - square_size - padding
         canvas.paste(qr_img, (qr_x, square_y))
         
-        # Draw No. Pesanan text BELOW the QR code (mimicking some versions of the Laravel logic)
+        # Draw No. Pesanan text BELOW the QR code
         try:
             base_font_size = max(10, int(header_h_px / 12))
             font_small = load_font(font_path, int(base_font_size * 0.8))
             label_text = str(product.get('no_pesanan', '-'))
             
             # Center the text below QR
-            text_bbox = font_small.getbbox(label_text) # (left, top, right, bottom)
+            text_bbox = font_small.getbbox(label_text)
             text_w = text_bbox[2] - text_bbox[0]
             label_x = qr_x + (square_size - text_w) / 2
             label_y = square_y + square_size + 2
             
-            print(f"Drawing QR Label: '{label_text}' at ({label_x}, {label_y})")
             draw.text((label_x, label_y), label_text, font=font_small, fill=(0, 0, 0, 255))
         except Exception as e:
             print(f"QR Label error: {e}")
@@ -91,15 +100,23 @@ def process_product_image(product, upload_path, font_path, sku_img_path=None):
         if sku_img_path:
             try:
                 sku_img = None
-                if sku_img_path.startswith('http'):
-                    resp = requests.get(sku_img_path, timeout=10)
-                    sku_img = Image.open(BytesIO(resp.content))
+                # Use cache for SKU image
+                if sku_img_path in _sku_cache:
+                    sku_img = _sku_cache[sku_img_path].copy()
                 else:
-                    sku_img = Image.open(sku_img_path)
+                    if sku_img_path.startswith('http'):
+                        resp = requests.get(sku_img_path, timeout=5)
+                        sku_img = Image.open(BytesIO(resp.content))
+                    else:
+                        sku_img = Image.open(sku_img_path)
+                    
+                    if sku_img:
+                        sku_img = sku_img.convert('RGBA')
+                        # Cache the converted image
+                        _sku_cache[sku_img_path] = sku_img.copy()
                 
                 if sku_img:
-                    sku_img = sku_img.convert('RGBA')
-                    # Aspect-ratio preserving cover (similar to Laravel's cover)
+                    # Aspect-ratio preserving cover
                     w, h = sku_img.size
                     ratio = max(square_size / w, square_size / h)
                     sku_img = sku_img.resize((int(w * ratio), int(h * ratio)), Image.Resampling.LANCZOS)

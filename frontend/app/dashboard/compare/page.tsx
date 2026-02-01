@@ -116,34 +116,44 @@ export default function ComparePage() {
         }
     };
 
-    const startPolling = useCallback(async (ids: number[]) => {
-        if (ids.length === 0) return;
+    const handleDeleteAll = async () => {
+        if (!confirm("PERINGATAN! Ini akan menghapus SEMUA data produk, gambar upload, gambar final, dan file ZIP. Tindakan ini tidak dapat dibatalkan. Lanjutkan?")) return;
 
-        const pollId = Math.random().toString(36).substring(7);
-        setActivePolls(prev => new Set(prev).add(pollId));
+        setIsLoading(true);
+        try {
+            await axios.post(`${API_BASE}/products/delete-all`);
+            setSelectedIds([]);
+            toast.success("Semua data berhasil dibersihkan!");
+            fetchProducts();
+        } catch (err) {
+            toast.error("Gagal membersihkan data");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const startPolling = useCallback(async (batchId?: string) => {
+        if (!batchId) return;
+
+        setActivePolls(prev => new Set(prev).add(batchId));
         setIsComparing(true);
-
-        // Initial setup for this specific batch
-        let batchDone = 0;
-        let batchTotal = ids.length;
+        localStorage.setItem("active_batch_id", batchId);
 
         const pollInterval = setInterval(async () => {
             try {
                 const res = await axios.get(`${API_BASE}/products/check-progress`, {
-                    params: { ids: ids.join(",") }
+                    params: { batch_id: batchId }
                 });
 
-                batchDone = res.data.done;
-                batchTotal = res.data.total;
+                const { done, total, is_finished } = res.data;
+                setCompareProgress({ done, total });
 
-                // Update global progress (simplified for now: just show the latest active one)
-                setCompareProgress({ done: batchDone, total: batchTotal });
-
-                if (res.data.is_finished) {
+                if (is_finished) {
                     clearInterval(pollInterval);
+                    localStorage.removeItem("active_batch_id");
                     setActivePolls(prev => {
                         const next = new Set(prev);
-                        next.delete(pollId);
+                        next.delete(batchId);
                         if (next.size === 0) setIsComparing(false);
                         return next;
                     });
@@ -152,30 +162,34 @@ export default function ComparePage() {
                 }
             } catch (err) {
                 console.error("Polling error", err);
-                clearInterval(pollInterval);
-                setActivePolls(prev => {
-                    const next = new Set(prev);
-                    next.delete(pollId);
-                    if (next.size === 0) setIsComparing(false);
-                    return next;
-                });
+                // Don't clear interval immediately on one error, maybe retry?
+                // But for simplicity, let's keep it.
             }
         }, 2000);
     }, [fetchProducts]);
 
+    // Check for active batch on mount
+    useEffect(() => {
+        const activeBatchId = localStorage.getItem("active_batch_id");
+        if (activeBatchId) {
+            startPolling(activeBatchId);
+        }
+    }, [startPolling]);
+
     const handleBulkCompare = async () => {
         if (selectedIds.length > 0) {
             try {
-                await axios.post(`${API_BASE}/products/compare`, selectedIds);
-                startPolling(selectedIds);
+                const res = await axios.post(`${API_BASE}/products/compare`, selectedIds);
+                startPolling(res.data.batch_id);
+                toast.success("Memulai komparasi...");
             } catch (err) {
                 toast.error("Gagal memproses komparasi");
             }
         } else {
             try {
                 const res = await axios.post(`${API_BASE}/products/compare-pending`);
-                if (res.data.ids && res.data.ids.length > 0) {
-                    startPolling(res.data.ids);
+                if (res.data.batch_id) {
+                    startPolling(res.data.batch_id);
                     if (res.data.count > 0) {
                         toast.success(`Memulai komparasi untuk ${res.data.count} data baru`);
                     }
@@ -387,6 +401,13 @@ export default function ComparePage() {
 
                     <div className="h-8 w-px bg-slate-200 hidden md:block"></div>
 
+                    <button
+                        onClick={handleDeleteAll}
+                        className="bg-white hover:bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 transition-all active:scale-95 shadow-sm"
+                    >
+                        <Trash2 className="w-3.5 h-3.5" /> Delete All Data
+                    </button>
+
                     <label className="bg-white hover:bg-slate-50 text-emerald-600 border border-emerald-200 px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-sm">
                         <Upload className="w-3.5 h-3.5" /> Import Excel
                         <input type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={handleImport} />
@@ -456,11 +477,34 @@ export default function ComparePage() {
                         <button onClick={fetchProducts} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 transition-all shadow-sm active:scale-95">
                             <RefreshCcw className="w-4 h-4" />
                         </button>
-                        <button onClick={handleBulkCompare} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all text-xs font-black uppercase tracking-wider shadow-lg shadow-purple-600/20 active:scale-95 flex items-center gap-2">
-                            {isComparing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Compare"}
+                        <button onClick={handleBulkCompare} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all text-xs font-black uppercase tracking-wider shadow-lg shadow-purple-600/20 active:scale-95 flex items-center gap-2 relative overflow-hidden group">
+                            {isComparing ? (
+                                <>
+                                    <div className="absolute inset-0 bg-purple-800 transition-all duration-500" style={{ width: `${compareProgress.total > 0 ? (compareProgress.done / compareProgress.total) * 100 : 0}%` }}></div>
+                                    <span className="relative z-10 flex items-center gap-2">
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        {Math.round((compareProgress.done / compareProgress.total) * 100) || 0}%
+                                    </span>
+                                </>
+                            ) : "Compare"}
                         </button>
                     </div>
                 </div>
+
+                {isComparing && (
+                    <div className="px-4 py-2 bg-purple-50 border-b border-purple-100 flex items-center gap-4">
+                        <div className="flex-1 h-2 bg-purple-100 rounded-full overflow-hidden">
+                            <motion.div
+                                className="h-full bg-purple-600"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(compareProgress.done / compareProgress.total) * 100}%` }}
+                            />
+                        </div>
+                        <span className="text-[10px] font-black text-purple-600 uppercase tracking-widest min-w-[100px] text-right">
+                            Comparing: {compareProgress.done} / {compareProgress.total}
+                        </span>
+                    </div>
+                )}
 
                 {/* Table Container - Scrollable Area */}
                 <div className="flex-1 overflow-auto relative scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300">
