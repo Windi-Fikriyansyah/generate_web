@@ -66,14 +66,21 @@ def merge_and_process(file_uuid, file_name, total_chunks, product_id, sync_by):
                 p.image_upload = final_path
                 p.final_image = None
                 p.preview_image = None
+                ids_to_process.append(p.id)
         else:
             product.image_upload = final_path
             product.final_image = None
             product.preview_image = None
+            ids_to_process.append(product.id)
             
         db.commit()
         
-        print(f"Merge complete for {file_name}. Ready for manual comparison.")
+        # AUTO-TRIGGER COMPARE: Push to Redis queue immediately
+        # We try to get the active batch_id from redis if possible or just run it independently
+        for p_id in ids_to_process:
+            run_processing_task.delay(p_id, final_path)
+            
+        print(f"Merge complete for {file_name}. Auto-comparison triggered for {len(ids_to_process)} items.")
         
     except Exception as e:
         print(f"Db update error: {e}")

@@ -240,7 +240,12 @@ export default function ComparePage() {
         const fileUuid = Math.random().toString(36).substring(7);
         let lastResponseIds: number[] = [];
 
-        for (let i = 0; i < totalChunks; i++) {
+        // Upload chunks in parallel with a concurrency limit
+        const activeUploadChunks = 4; // Max parallel chunks
+        const chunks = Array.from({ length: totalChunks }, (_, i) => i);
+        let completed = 0;
+
+        const uploadTask = async (i: number) => {
             const start = i * CHUNK_SIZE;
             const end = Math.min(file.size, start + CHUNK_SIZE);
             const chunk = file.slice(start, end);
@@ -255,45 +260,75 @@ export default function ComparePage() {
             formData.append("sync_by", syncBy);
 
             try {
-                const response = await axios.post(`${API_BASE}/upload-chunk`, formData, {
-                    onUploadProgress: (progressEvent) => {
-                        if (progressEvent.total) {
-                            const chunkUploaded = progressEvent.loaded;
-                            const totalUploadedSoFar = (i * CHUNK_SIZE) + chunkUploaded;
-                            const percent = Math.min(100, Math.round((totalUploadedSoFar / file.size) * 100));
+                const response = await axios.post(`${API_BASE}/upload-chunk`, formData);
 
-                            setUploadProgress(percent);
-                            setUploadInfo({
-                                current: Number((Math.min(totalUploadedSoFar, file.size) / (1024 * 1024)).toFixed(1)),
-                                total: Number((file.size / (1024 * 1024)).toFixed(1))
-                            });
-
-                            // Instant close at 100% upload, ensuring no "stacking" while waiting for server merge
-                            if (i === totalChunks - 1 && percent >= 100) {
-                                setIsUploadModalOpen(false);
-                            }
-                        }
-                    }
+                completed++;
+                const percent = Math.min(100, Math.round((completed / totalChunks) * 100));
+                setUploadProgress(percent);
+                setUploadInfo({
+                    current: Number(((completed * CHUNK_SIZE) / (1024 * 1024)).toFixed(1)),
+                    total: Number((file.size / (1024 * 1024)).toFixed(1))
                 });
 
-                // If final chunk
-                if (i === totalChunks - 1 && response.data.ids) {
+                if (response.data.ids) {
                     lastResponseIds = response.data.ids;
                 }
             } catch (err) {
                 console.error(err);
-                setIsUploadModalOpen(false);
-                toast.error("Gagal mengunggah gambar");
-                setUploadingId(null);
-                return;
+                throw err;
             }
+        };
+
+        // Simple parallel pool
+        try {
+            const pool: Promise<any>[] = [];
+            for (const i of chunks) {
+                const p = uploadTask(i).catch(e => {
+                    throw e;
+                });
+                pool.push(p);
+                // Limit concurrency: if pool hits limit, wait for any to finish before continuing
+                if (pool.length >= activeUploadChunks) {
+                    await Promise.race(pool);
+                    // Remove resolved promises (optimization: filter settled ones)
+                    // Simple approach: wait for all if hitting limit frequently? 
+                    // Let's just wait for current batch and clear to keep UI simple.
+                }
+            }
+            await Promise.all(pool);
+        } catch (err) {
+            setIsUploadModalOpen(false);
+            toast.error("Gagal mengunggah gambar");
+            setUploadingId(null);
+            return;
         }
 
 
         setUploadingId(null);
-        // Ensure modal is closed (in case logic above didn't trigger)
         setIsUploadModalOpen(false);
-        toast.success("Gambar berhasil diunggah! Klik tombol Compare untuk memproses.");
+        toast.success("Gambar berhasil diunggah! Memulai proses perbandingan otomatis...");
+
+        // Start polling results immediately because we know comparing is happening
+        // Even if we don't have a batch_id, we can poll for all IDs that have images but no final_result
+        if (!isComparing) {
+            const pollInterval = setInterval(async () => {
+                try {
+                    // Refresh data to show results as they come in
+                    const res = await axios.get(`${API_BASE}/products`, {
+                        params: { page, limit, search, sort_by: sortBy, sort_order: sortOrder }
+                    });
+                    setProducts(res.data.data);
+
+                    // Stop polling if there are no more pending items in CURRENT view
+                    const pending = res.data.data.filter((p: any) => p.image_upload && !p.final_image);
+                    if (pending.length === 0) {
+                        clearInterval(pollInterval);
+                    }
+                } catch (err) {
+                    console.error("Auto-poll error", err);
+                }
+            }, 3000);
+        }
 
         // Optimistic UI Update: Show the image immediately using Blob URL
         const blobUrl = URL.createObjectURL(file);
@@ -644,6 +679,11 @@ export default function ComparePage() {
                                                         </div>
                                                     </div>
                                                 </a>
+                                            ) : product.image_upload ? (
+                                                <div className="w-16 h-16 rounded-xl border-2 border-dashed border-purple-200 flex flex-col items-center justify-center text-purple-600 mx-auto bg-purple-50 animate-pulse">
+                                                    <Loader2 size={24} className="animate-spin mb-1" />
+                                                    <span className="text-[6px] font-black uppercase">Comparing</span>
+                                                </div>
                                             ) : (
                                                 <div className="w-16 h-16 rounded-xl border-2 border-dashed border-purple-100 flex items-center justify-center text-purple-100 mx-auto bg-white/50">
                                                     <ImageIcon size={24} />

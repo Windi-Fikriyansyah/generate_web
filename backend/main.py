@@ -133,6 +133,8 @@ async def get_products(
         "data": products
     }
 
+import aiofiles
+
 @app.post("/upload-chunk")
 async def upload_chunk(
     file: UploadFile = File(...),
@@ -141,16 +143,21 @@ async def upload_chunk(
     fileName: str = Form(...),
     fileUuid: str = Form(...),
     product_id: int = Form(...),
-    sync_by: str = Form("nomor_id") # Default to nomor_id as in Laravel
+    sync_by: str = Form("nomor_id")
 ):
     chunk_path = f"storage/chunks/{fileUuid}_{chunkIndex}"
-    with open(chunk_path, "wb") as buffer:
-        buffer.write(await file.read())
+    
+    # Use aiofiles to prevent blocking the event loop
+    async with aiofiles.open(chunk_path, "wb") as buffer:
+        await buffer.write(await file.read())
         
-    if chunkIndex == totalChunks - 1:
-        # Offload 'Assemble & Process' to Background Task
-        # We return success immediately so the UI doesn't freeze.
-        
+    # Atomic increment in Redis to track progress
+    redis_key = f"upload_count:{fileUuid}"
+    count = r.incr(redis_key)
+    r.expire(redis_key, 3600) # Auto-cleanup in 1 hour if failed
+    
+    if count == totalChunks:
+        # All chunks arrived! Start assembly.
         final_path = f"storage/uploads/{fileUuid}_{fileName}"
         
         merge_and_process.delay(
@@ -160,12 +167,11 @@ async def upload_chunk(
             product_id,
             sync_by
         )
+        r.delete(redis_key) # Clean up redis key
         
-        return {"message": "Upload assembled, processing in background.", "path": final_path, "ids": [product_id]}
+        return {"message": "All chunks received, assembling...", "path": final_path, "ids": [product_id]}
 
-
-    
-    return {"message": f"Chunk {chunkIndex} received"}
+    return {"message": f"Chunk {chunkIndex} received", "received": count, "total": totalChunks}
 
 # Auth Endpoints
 @app.post("/login")

@@ -10,16 +10,20 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-db_generate}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
     networks:
       - webnet
 
   redis:
     image: redis:7-alpine
     restart: always
-    ports:
-      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
     networks:
       - webnet
 
@@ -37,13 +41,18 @@ services:
     depends_on:
       - db
       - redis
+    deploy:
+      resources:
+        limits:
+          memory: 4G
     networks:
       - webnet
 
   worker:
     build: ./backend
     restart: always
-    command: celery -A celery_app worker --loglevel=info
+    # Concurrency set to 8 to match 8 vCPU cores
+    command: celery -A celery_app worker --loglevel=info --concurrency=8
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-admin123}@db:5432/${POSTGRES_DB:-db_generate}
       - REDIS_HOST=redis
@@ -54,6 +63,11 @@ services:
     depends_on:
       - db
       - redis
+    deploy:
+      resources:
+        limits:
+          # High memory allocation for large image processing
+          memory: 20G
     networks:
       - webnet
 
@@ -62,14 +76,12 @@ services:
     restart: always
     depends_on:
       - backend
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     networks:
       - webnet
-
-  certbot:
-    image: certbot/certbot
-    volumes:
-      - certbot_www:/var/www/certbot
-      - certbot_conf:/etc/letsencrypt
 
   nginx:
     image: nginx:alpine
@@ -80,11 +92,13 @@ services:
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./backend/storage:/app/storage:ro
-      - certbot_www:/var/www/certbot
-      - certbot_conf:/etc/letsencrypt
     depends_on:
       - frontend
       - backend
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     networks:
       - webnet
 
