@@ -22,6 +22,7 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
+    worker_max_tasks_per_child=1, # Restart worker after each task to free memory
 )
 
 # Import tasks module to ensure they are registered

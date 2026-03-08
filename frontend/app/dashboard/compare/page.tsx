@@ -235,7 +235,7 @@ export default function ComparePage() {
         setIsUploadModalOpen(true);
         setUploadProgress(0);
 
-        const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
+        const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
         const fileUuid = Math.random().toString(36).substring(7);
         let lastResponseIds: number[] = [];
