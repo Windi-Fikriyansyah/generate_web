@@ -90,8 +90,7 @@ app.mount("/storage", StaticFiles(directory="storage"), name="storage")
 # dependency get_db imported from database module
 
 
-# Processing logic moved to tasks.py
-from tasks import merge_and_process, run_processing_task
+# Tasks are imported locally within endpoints to avoid circular imports during startup
 
 
 @app.get("/products")
@@ -157,6 +156,9 @@ async def upload_chunk(
     r.expire(redis_key, 3600) # Auto-cleanup in 1 hour if failed
     
     if count == totalChunks:
+        # Import task locally to avoid circular dependency
+        from tasks import merge_and_process
+        
         # All chunks arrived! Start assembly.
         final_path = f"storage/uploads/{fileUuid}_{fileName}"
         
@@ -298,6 +300,7 @@ async def run_compare_bulk(ids: list[int], db: Session = Depends(get_db)):
     r.set(f"total:{batch_id}", len(products), ex=3600)
     r.set(f"progress:{batch_id}", 0, ex=3600)
 
+    from tasks import run_processing_task
     for product in products:
         product.final_image = None
         product.preview_image = None
@@ -320,6 +323,7 @@ async def compare_pending(db: Session = Depends(get_db)):
     r.set(f"total:{batch_id}", len(products), ex=3600)
     r.set(f"progress:{batch_id}", 0, ex=3600)
 
+    from tasks import run_processing_task
     ids = []
     for product in products:
         product.final_image = None
@@ -420,21 +424,4 @@ async def import_products(file: UploadFile = File(...), db: Session = Depends(ge
         print(f"Import error: {e}")
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
 
-# Seed Admin User
-def seed_admin():
-    try:
-        db = SessionLocal()
-        admin = db.query(User).filter(User.email == "admin@example.com").first()
-        if not admin:
-            admin = User(
-                email="admin@example.com",
-                hashed_password=get_password_hash("admin123")
-            )
-            db.add(admin)
-            db.commit()
-            print("Admin user seeded successfully.")
-        db.close()
-    except Exception as e:
-        print(f"Error seeding admin: {e}")
-
-seed_admin()
+# Final cleanup: Ensure redundant seed calls are gone
