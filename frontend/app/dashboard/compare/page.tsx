@@ -21,7 +21,7 @@ import {
     MoreHorizontal,
     ExternalLink,
     X,
-    CloudUpload
+    UploadCloud
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -548,7 +548,7 @@ export default function ComparePage() {
                         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white w-full max-w-lg rounded-[3rem] p-12 shadow-2xl relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-full h-2 bg-slate-100"><motion.div className="h-full bg-gradient-to-r from-purple-600 to-indigo-600" animate={{ width: `${uploadProgress}%` }} transition={{ duration: 0.3 }} /></div>
                             <div className="text-center space-y-6">
-                                <div className="w-24 h-24 bg-purple-50 rounded-[2.5rem] flex items-center justify-center mx-auto border border-purple-100"><CloudUpload size={48} className="text-purple-600 animate-bounce" /></div>
+                                <div className="w-24 h-24 bg-purple-50 rounded-[2.5rem] flex items-center justify-center mx-auto border border-purple-100"><UploadCloud size={48} className="text-purple-600 animate-bounce" /></div>
                                 <div className="space-y-2"><h3 className="text-3xl font-black text-slate-900 tracking-tight">Uploading...</h3><p className="text-slate-500 font-bold uppercase text-[10px]">{uploadProgress}% Complete</p></div>
                                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{uploadInfo.current}MB / {uploadInfo.total}MB</div>
                             </div>
