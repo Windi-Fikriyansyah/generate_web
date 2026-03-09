@@ -31,7 +31,7 @@ export default function DashboardLayout({
         { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard/compare" },
     ];
 
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
 
     useEffect(() => {
         const token = localStorage.getItem("token");

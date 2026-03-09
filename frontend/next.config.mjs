@@ -9,6 +9,16 @@ const nextConfig = {
                 port: '8000',
                 pathname: '/storage/**',
             },
+            {
+                protocol: 'https',
+                hostname: 'tupianpipei.online',
+                pathname: '/storage/**',
+            },
+            {
+                protocol: 'http',
+                hostname: 'tupianpipei.online',
+                pathname: '/storage/**',
+            },
         ],
     },
 };
