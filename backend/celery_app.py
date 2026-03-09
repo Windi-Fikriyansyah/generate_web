@@ -12,7 +12,8 @@ redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
 celery_app = Celery(
     "worker",
     broker=redis_url,
-    backend=redis_url
+    backend=redis_url,
+    include=["tasks"]
 )
 
 celery_app.conf.update(
@@ -24,7 +25,4 @@ celery_app.conf.update(
     task_track_started=True,
     worker_max_tasks_per_child=1, # Restart worker after each task to free memory
 )
-
-# Import tasks module to ensure they are registered
-import tasks
 
