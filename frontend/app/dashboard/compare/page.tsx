@@ -180,7 +180,7 @@ export default function ComparePage() {
         } finally {
             setIsLoading(false);
         }
-    }, [page, limit, search, sortBy, sortOrder, products]);
+    }, [page, limit, search, sortBy, sortOrder]);
 
     // Load initial preference
     useEffect(() => {
@@ -301,7 +301,7 @@ export default function ComparePage() {
             } catch (err) {
                 console.error("Batch polling error", err);
             }
-        }, 2000);
+        }, 5000); // Polling slower to reduce server load
     }, [fetchProducts]);
 
     useEffect(() => {
